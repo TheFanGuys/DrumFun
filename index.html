@@ -88,7 +88,7 @@
   @keyframes breathe{0%,100%{opacity:.85;}50%{opacity:1;}}
 </style>
 </head>
-<body>
+<body class="hideTargets">
   <div id="gate">
     <div class="logo">BEAT<b>FORGE</b></div>
     <div class="sub">Tap the drums to play them. Nine pads, real drum sounds, works with no signal.</div>
@@ -98,7 +98,7 @@
   <div id="hud">
     <div id="brand">BEAT<b>FORGE</b> Tap Pad</div>
     <div id="spacer"></div>
-    <button class="btn" id="toggleTargets">Hide targets</button>
+    <button class="btn" id="toggleTargets">Show targets</button>
   </div>
 
   <div id="stage">
@@ -232,16 +232,24 @@
     async function start(){
       if(ready) return;
       try{
-        await Tone.start();
-        Tone.getContext().lookAhead=0;   // low latency for live tapping
+        await Tone.start();                          // user-gesture audio unlock
+        const ctx=Tone.getContext().rawContext;
+        if(ctx.state!=='running'){ try{ await ctx.resume(); }catch(_){} }
+        Tone.getContext().lookAhead=0.03;            // snappy but safe (0 can drop hits on iOS)
         V=buildVoices();
+        // nudge iOS audio awake with one inaudible tick
+        try{ const s=new Tone.Oscillator(30,'sine').toDestination(); s.volume.value=-100; s.start(); s.stop('+0.03'); }catch(_){}
         ready=true;
         gate.style.display='none';
       }catch(e){
-        gate.querySelector('.sub').textContent='Tap again to start the sound.';
+        gate.querySelector('.sub').textContent='Tap again to turn the sound on.';
       }
     }
     gate.addEventListener('pointerdown', start, {passive:true});
+    gate.addEventListener('touchend',   start, {passive:true});
+    // belt-and-suspenders: first touch anywhere unlocks audio if the gate missed it
+    function firstTouch(){ if(!ready) start(); document.removeEventListener('pointerdown', firstTouch); }
+    document.addEventListener('pointerdown', firstTouch, {passive:true});
 
     // ---- pad input: pointerdown = instant, no 300ms delay ----
     PADS.forEach(p=>{
